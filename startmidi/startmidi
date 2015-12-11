@@ -1,0 +1,20 @@
+#!/bin/sh
+cd /tmp
+mkdir cfg
+mount none cfg -t configfs
+mkdir cfg/usb_gadget/g1
+cd cfg/usb_gadget/g1
+mkdir configs/c.1
+mkdir functions/midi.usb0
+mkdir strings/0x409
+mkdir configs/c.1/strings/0x409
+echo 4096 > functions/midi.usb0/buflen
+echo 0x0004 > idProduct
+echo 0x17b3 > idVendor
+echo serial > strings/0x409/serialnumber
+echo manufacturer > strings/0x409/manufacturer
+echo "MIDI function" > strings/0x409/product
+echo "Conf 1" > configs/c.1/strings/0x409/configuration
+echo 120 > configs/c.1/MaxPower
+ln -s functions/midi.usb0 configs/c.1
+echo "ci_hdrc.0" > UDC
