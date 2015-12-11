@@ -23,6 +23,7 @@ clean:
 
 install: $(APP)
 	$(TARGETINST) -d $(APP) /bin/$(APP)
+	$(TARGETINST) -d -p 0755 $(APP).sh /etc/init.d/$(APP)
 
 %.o: %.c
 	$(CC) -c $(CFLAGS) -o $@ $<

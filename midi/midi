@@ -7,8 +7,10 @@
 # Should-stop:
 # Default-Start:
 # Default-Stop:
-# Short-Description: Start MIDI gadget.
+# Short-Description: MIDI gadget
 ### END INIT INFO
+
+set -e
 
 CONFIGFS_HOME=/sys/kernel/config
 
@@ -26,29 +28,29 @@ mount_configfs() {
 setup_midi_gadget() {
 	[ -e "${CONFIGFS_HOME}/usb_gadget/g1/configs/c.1/midi.usb0" ] && return 0
 
-	cd "${CONFIGFS_HOME}/usb_gadget" || exit 1
-	mkdir g1 || exit 1
-	cd g1 || exit 1
-	mkdir configs/c.1 || exit 1
-	mkdir functions/midi.usb0 || exit 1
-	mkdir strings/0x409 || exit 1
-	mkdir configs/c.1/strings/0x409 || exit 1
-	echo 4096 > functions/midi.usb0/buflen || exit 1
-	echo 0x0004 > idProduct || exit 1
-	echo 0x17b3 > idVendor || exit 1
-	echo "MIDI function" > strings/0x409/product || exit 1
-	echo "Conf 1" > configs/c.1/strings/0x409/configuration || exit 1
-	ln -s functions/midi.usb0 configs/c.1 || exit 1
+	cd "${CONFIGFS_HOME}/usb_gadget"
+	mkdir g1
+	cd g1
+	mkdir configs/c.1
+	mkdir functions/midi.usb0
+	mkdir strings/0x409
+	mkdir configs/c.1/strings/0x409
+	echo 4096 > functions/midi.usb0/buflen
+	echo 0x0004 > idProduct
+	echo 0x17b3 > idVendor
+	echo "MIDI function" > strings/0x409/product
+	echo "Conf 1" > configs/c.1/strings/0x409/configuration
+	ln -s functions/midi.usb0 configs/c.1
 }
 
 start_midi_gadget() {
-	cd "${CONFIGFS_HOME}/usb_gadget/g1" || exit 1
-	echo "ci_hdrc.0" > UDC || exit 1
+	cd "${CONFIGFS_HOME}/usb_gadget/g1"
+	echo "ci_hdrc.0" > UDC
 }
 
 stop_midi_gadget() {
-	cd "${CONFIGFS_HOME}/usb_gadget/g1" || exit 1
-	echo "" > UDC || exit 1
+	cd "${CONFIGFS_HOME}/usb_gadget/g1"
+	echo "" > UDC
 }
 
 case "$1" in
@@ -65,7 +67,7 @@ stop)
 	echo "done."
 	;;
 *)
-	echo "Usage: /etc/init.d/midi {start|stop}"
+	echo "Usage: "$0" {start|stop}"
 	exit 1
 	;;
 esac

@@ -4,24 +4,62 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <linux/i2c-dev.h>
 #include <time.h>
 #include <errno.h>
+#include <string.h>
+#include <stdarg.h>
+#include <signal.h>
 
 // Receives bank, reg, data in the following formats:
 // SysEx:	0xf0 0x7d 0b0BRRRRRR 0b0RRDDDDD 0b0DDD0000 0xf7
 // Note On:	0b10010DBR 0b0RRRRRRR 0b0DDDDDDD
 
 #define MIDI_DEVICE "/dev/snd/midiC0D0"
+#define LOG_FILE "/var/log/opl3d"
 #define SYSEX_SIZE 4
 
 #define OPL3_FPGA_BASE 0x43c00000
-#define OPL3_FPGA_SIZE 0x10000
+#define OPL3_FPGA_SIZE 0x200
 
 #define IIC_SLAVE_ADDR 0b0011010
 
 static unsigned char *opl3 = 0;
 static int ssm2603 = 0;
+
+static FILE *logFile;
+static int run = 1;
+
+void log(const char *fmt, ...) {
+	if (logFile == NULL)
+		return;
+
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(logFile, fmt, ap);
+	va_end(ap);
+
+	fputs("\n", logFile);
+	fflush(logFile);
+}
+
+void err(const char *fmt, ...) {
+	if (logFile == NULL)
+		return;
+
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(logFile, fmt, ap);
+	va_end(ap);
+
+	fprintf(logFile, ": %s\n", strerror(errno));
+	fflush(logFile);
+}
+
 #define VOL_MAX 6
 #define VOL_MIN -73
 #define VOL_OFFSET (127 - 6)
@@ -51,26 +89,26 @@ static void setAudioReg(int file, unsigned char reg, unsigned short data) {
 	buf[1] = data & 0xff;
 
 	if (write(file, buf, 2) != 2) {
-		perror("I2C failed");
+		err("I2C failed");
 		exit(1);
 	}
 }
 
 static void setAudioVolume(int volume) {
+	log("Setting volume to %i dB", volume);
 	setAudioReg(ssm2603, 2, (1 << 8) | (volume + VOL_OFFSET));
-	printf("Current volume: %i dB\n", volume);
 }
 
 static void initAudio() {
 	ssm2603 = open("/dev/i2c-0", O_RDWR);
 
 	if (ssm2603 < 0) {
-		perror("Couldn't open /dev/i2c-0");
+		err("Failed to open /dev/i2c-0");
 		exit(1);
 	}
 
 	if (ioctl(ssm2603, I2C_SLAVE, IIC_SLAVE_ADDR) < 0) {
-		perror("Failed ioctl");
+		err("ioctl failed");
 		exit(1);
 	}
 
@@ -97,27 +135,50 @@ inline void delay() {
 	nanosleep(&t, NULL);
 }
 
+void sigHandler(int sig) {
+	switch(sig){
+		case SIGTERM:
+			log("Caught SIGTERM");
+			run = 0;
+			break;
+	}
+}
+
 int main(int argc, char *argv[])
 {
+	struct sigaction action;
+	sigset_t set;
+	sigemptyset(&set);
+	action.sa_handler = sigHandler;
+	action.sa_mask = set;
+	action.sa_flags = 0;
+
+	if (sigaction(SIGTERM, &action, 0) < 0) {
+		perror("sigaction");
+		exit(1);
+	}
+
+	logFile = fopen(LOG_FILE, "w+");
+
 	initAudio();
 
 	int mem_fd;
 	int volume = 0;
 
 	if ((mem_fd = open("/dev/mem", O_RDWR | O_SYNC)) < 0) {
-		perror("Error opening /dev/mem");
+		err("Failed to open /dev/mem");
 		return 1;
 	}
 
 	opl3 = mmap(NULL, OPL3_FPGA_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, OPL3_FPGA_BASE);
 
 	if (!opl3) {
-		perror("mmap error");
+		err("mmap failed");
 		close(mem_fd);
 		return 1;
 	}
 
-	printf("Start MIDI slave mode\n");
+	log("Starting MIDI slave mode");
 	unsigned char buf[256];
 	unsigned char sysEx[SYSEX_SIZE];
 	int sysExSize = 0;
@@ -126,97 +187,63 @@ int main(int argc, char *argv[])
 	int fd = open(MIDI_DEVICE, O_RDONLY, 0);
 
 	if (fd == -1) {
-		perror("Error opening " MIDI_DEVICE);
+		err("Failed to open " MIDI_DEVICE);
 		return 1;
 	}
 
 	int readingSysEx = 0;
 
-	int run = 1;
 	while (run) {
-		int result;
-		fd_set fdSet;
-		do {
-			FD_ZERO(&fdSet);
-			FD_SET(fd, &fdSet);
-			FD_SET(STDIN_FILENO, &fdSet);
+		int count = read(fd, buf, sizeof(buf));
 
-			result = select(fd + 1, &fdSet, NULL, NULL, NULL);
-		} while (result == -1 && errno == EINTR);
-
-		if (result < 0) {
-			perror("Select error");
-			exit(1);
+		if (count == 0) {
+			log("MIDI device EOF");
+			break;
 		}
 
-		if (FD_ISSET(fd, &fdSet)) {
-			int count = read(fd, buf, sizeof(buf));
+		if (count < 0) {
+			if (errno != EINTR)
+				err("MIDI device read failed");
+			break;
+		}
 
-			if (count <= 0) {
-				fprintf(stderr, "MIDI socket read failed, exiting");
-				exit(1);
-			}
-
-			int i;
-			for (i = 0; i < count; ++i) {
-				unsigned char c = buf[i];
-				if (!readingSysEx) {
-					if (c == 0xf0) {
-						// Start reading SysEx
-						readingSysEx = 1;
-					} else {
-						msg[msgSize++] = c;
-						if (msgSize == 3) {
-							if ((msg[0] & 0xf8) == 0x90) {
-								parseMsg(msg[0], msg[1], msg[2]);
-								delay();
-							} else
-								fprintf(stderr, "Ignoring unrecognized MIDI command: %02x %02x %02x", msg[0], msg[1], msg[2]);
-
-							msgSize = 0;
-						}
-					}
+		int i;
+		for (i = 0; i < count; ++i) {
+			unsigned char c = buf[i];
+			if (!readingSysEx) {
+				if (c == 0xf0) {
+					// Start reading SysEx
+					readingSysEx = 1;
 				} else {
-					if (c == 0xf7) {
-						// Terminator received
-						if (sysExSize == SYSEX_SIZE) {
-							parseSysEx(sysEx[1], sysEx[2], sysEx[3]);
+					msg[msgSize++] = c;
+					if (msgSize == 3) {
+						if ((msg[0] & 0xf8) == 0x90) {
+							parseMsg(msg[0], msg[1], msg[2]);
 							delay();
 						} else
-							fprintf(stderr, "Invalid SysEx of size %i received\n", sysExSize);
+							log("Ignoring unrecognized MIDI command: %02x %02x %02x", msg[0], msg[1], msg[2]);
 
-						readingSysEx = 0;
-						sysExSize = 0;
-					} else if (sysExSize == SYSEX_SIZE) {
-						fprintf(stderr, "SysEx overflow, ignoring data %02x\n", c);
-						fprintf(stderr, "%02x %02x %02x %02x\n", sysEx[0], sysEx[1], sysEx[2], sysEx[3]);
-						readingSysEx = 0;
-						sysExSize = 0;
-					} else {
-						sysEx[sysExSize++] = c;
+						msgSize = 0;
 					}
 				}
-			}
-		}
+			} else {
+				if (c == 0xf7) {
+					// Terminator received
+					if (sysExSize == SYSEX_SIZE) {
+						parseSysEx(sysEx[1], sysEx[2], sysEx[3]);
+						delay();
+					} else
+						log("Invalid SysEx of size %i received", sysExSize);
 
-		if (FD_ISSET(0, &fdSet)) {
-			int c = fgetc(stdin);
-			switch(c) {
-			case '-':
-				if (volume > VOL_MIN) {
-					--volume;
-					setAudioVolume(volume);
+					readingSysEx = 0;
+					sysExSize = 0;
+				} else if (sysExSize == SYSEX_SIZE) {
+					log("SysEx overflow, ignoring data %02x %02x %02x %02x %02x", sysEx[0], sysEx[1], sysEx[2], sysEx[3], c);
+					readingSysEx = 0;
+					sysExSize = 0;
+				} else {
+					sysEx[sysExSize++] = c;
 				}
-				break;
-			case '+':
-				if (volume < VOL_MAX) {
-					++volume;
-					setAudioVolume(volume);
-				}
-				break;
-			case 'q':
-				run = 0;
-				break;
 			}
 		}
 	}
@@ -225,5 +252,10 @@ int main(int argc, char *argv[])
 	close(ssm2603);
 	munmap(opl3, OPL3_FPGA_SIZE);
 	close(mem_fd);
+
+	log("Exiting..");
+	if (logFile)
+		fclose(logFile);
+
 	return 0;
 }
