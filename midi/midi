@@ -1,0 +1,73 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          midi
+# Required-Start:
+# Required-Stop:
+# Should-Start:
+# Should-stop:
+# Default-Start:
+# Default-Stop:
+# Short-Description: Start MIDI gadget.
+### END INIT INFO
+
+CONFIGFS_HOME=/sys/kernel/config
+
+mount_configfs() {
+	[ -e "${CONFIGFS_HOME}/usb_gadget" ] && return 0
+
+	mount none "${CONFIGFS_HOME}" -t configfs
+
+	if [ ! -e "${CONFIGFS_HOME}/usb_gadget" ]; then
+		echo "failed to mount configfs or USB Gadget support disabled."
+		exit 1
+	fi
+}
+
+setup_midi_gadget() {
+	[ -e "${CONFIGFS_HOME}/usb_gadget/g1/configs/c.1/midi.usb0" ] && return 0
+
+	cd "${CONFIGFS_HOME}/usb_gadget" || exit 1
+	mkdir g1 || exit 1
+	cd g1 || exit 1
+	mkdir configs/c.1 || exit 1
+	mkdir functions/midi.usb0 || exit 1
+	mkdir strings/0x409 || exit 1
+	mkdir configs/c.1/strings/0x409 || exit 1
+	echo 4096 > functions/midi.usb0/buflen || exit 1
+	echo 0x0004 > idProduct || exit 1
+	echo 0x17b3 > idVendor || exit 1
+	echo "MIDI function" > strings/0x409/product || exit 1
+	echo "Conf 1" > configs/c.1/strings/0x409/configuration || exit 1
+	ln -s functions/midi.usb0 configs/c.1 || exit 1
+}
+
+start_midi_gadget() {
+	cd "${CONFIGFS_HOME}/usb_gadget/g1" || exit 1
+	echo "ci_hdrc.0" > UDC || exit 1
+}
+
+stop_midi_gadget() {
+	cd "${CONFIGFS_HOME}/usb_gadget/g1" || exit 1
+	echo "" > UDC || exit 1
+}
+
+case "$1" in
+start)
+	echo -n "Starting USB MIDI Gadget... "
+	mount_configfs
+	setup_midi_gadget
+	start_midi_gadget
+	echo "done."
+	;;
+stop)
+	echo -n "Stopping USB MIDI Gadget... "
+	stop_midi_gadget
+	echo "done."
+	;;
+*)
+	echo "Usage: /etc/init.d/midi {start|stop}"
+	exit 1
+	;;
+esac
+
+exit 0

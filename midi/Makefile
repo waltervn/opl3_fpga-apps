@@ -4,7 +4,7 @@ endif
 
 include apps.common.mk
 
-APP = startmidi
+APP = midi
 
 all: build install
 
@@ -15,7 +15,7 @@ clean:
 .PHONY: install image
 
 install: $(APP)
-	$(TARGETINST) -d -p 0755 $(APP) /bin/$(APP)
+	$(TARGETINST) -d -p 0755 $(APP) /etc/init.d/$(APP)
 
 help:
 	@echo ""
