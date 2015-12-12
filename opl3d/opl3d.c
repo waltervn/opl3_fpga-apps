@@ -39,13 +39,14 @@
 #include <stdarg.h>
 #include <signal.h>
 
-// Receives bank, reg, data in the following formats:
-// SysEx:	0xf0 0x7d 0b0BRRRRRR 0b0RRDDDDD 0b0DDD0000 0xf7
-// Note On:	0b10010DBR 0b0RRRRRRR 0b0DDDDDDD
+// Receives bank, reg, data in the following format:
+// 0b10010DBR 0b0RRRRRRR 0b0DDDDDDD
+
+// Receives volume change in the following format:
+// 0b11000000 0b0VVVVVVV
 
 #define MIDI_DEVICE "/dev/snd/midiC0D0"
 #define LOG_FILE "/var/log/opl3d"
-#define SYSEX_SIZE 4
 
 #define OPL3_FPGA_BASE 0x43c00000
 #define OPL3_FPGA_SIZE 0x200
@@ -58,7 +59,7 @@ static int ssm2603 = 0;
 static FILE *logFile;
 static int run = 1;
 
-void log(const char *fmt, ...) {
+static void log(const char *fmt, ...) {
 	if (logFile == NULL)
 		return;
 
@@ -72,7 +73,7 @@ void log(const char *fmt, ...) {
 	fflush(logFile);
 }
 
-void err(const char *fmt, ...) {
+static void err(const char *fmt, ...) {
 	if (logFile == NULL)
 		return;
 
@@ -86,19 +87,8 @@ void err(const char *fmt, ...) {
 	fflush(logFile);
 }
 
-#define VOL_MAX 6
-#define VOL_MIN -73
-#define VOL_OFFSET (127 - 6)
-
 static void writeOplReg(int reg, int data) {
 	opl3[reg] = data;
-}
-
-static void parseSysEx(unsigned char b1, unsigned char b2, unsigned char b3) {
-	int reg = ((b1 & 0x7f) << 2) | (b2 >> 5);
-	int data = ((b2 & 0x1f) << 3) | (b3 >> 4);
-
-	writeOplReg(reg, data);
 }
 
 static void parseMsg(unsigned char b1, unsigned char b2, unsigned char b3) {
@@ -120,9 +110,9 @@ static void setAudioReg(int file, unsigned char reg, unsigned short data) {
 	}
 }
 
-static void setAudioVolume(int volume) {
-	log("Setting volume to %i dB", volume);
-	setAudioReg(ssm2603, 2, (1 << 8) | (volume + VOL_OFFSET));
+static void setAudioVolume(unsigned char volume) {
+	log("Setting volume to %i dB", volume - 121);
+	setAudioReg(ssm2603, 2, (1 << 8) | volume);
 }
 
 static void initAudio() {
@@ -143,7 +133,7 @@ static void initAudio() {
 	setAudioReg(ssm2603, 6, 0b000110000); //Power up
 	setAudioReg(ssm2603, 0, 0b000010111);
 	setAudioReg(ssm2603, 1, 0b000010111);
-	setAudioVolume(0);
+	setAudioVolume(0b001111001);
 	setAudioReg(ssm2603, 4, 0b000010000);
 	setAudioReg(ssm2603, 5, 0b000000000);
 	setAudioReg(ssm2603, 7, 0b000001010);
@@ -153,7 +143,7 @@ static void initAudio() {
 	setAudioReg(ssm2603, 6, 0b000100000);
 }
 
-inline void delay() {
+static inline void delay() {
 	// FIXME some kind of sub-microsecond delay here?
 	struct timespec t;
 	t.tv_sec = 0;
@@ -161,7 +151,7 @@ inline void delay() {
 	nanosleep(&t, NULL);
 }
 
-void sigHandler(int sig) {
+static void sigHandler(int sig) {
 	switch(sig){
 		case SIGTERM:
 			log("Caught SIGTERM");
@@ -206,9 +196,7 @@ int main(int argc, char *argv[])
 
 	log("Starting MIDI slave mode");
 	unsigned char buf[256];
-	unsigned char sysEx[SYSEX_SIZE];
-	int sysExSize = 0;
-	unsigned char msg[4];
+	unsigned char msg[3];
 	int msgSize = 0;
 	int fd = open(MIDI_DEVICE, O_RDONLY, 0);
 
@@ -216,8 +204,6 @@ int main(int argc, char *argv[])
 		err("Failed to open " MIDI_DEVICE);
 		return 1;
 	}
-
-	int readingSysEx = 0;
 
 	while (run) {
 		int count = read(fd, buf, sizeof(buf));
@@ -236,40 +222,28 @@ int main(int argc, char *argv[])
 		int i;
 		for (i = 0; i < count; ++i) {
 			unsigned char c = buf[i];
-			if (!readingSysEx) {
-				if (c == 0xf0) {
-					// Start reading SysEx
-					readingSysEx = 1;
-				} else {
-					msg[msgSize++] = c;
-					if (msgSize == 3) {
-						if ((msg[0] & 0xf8) == 0x90) {
-							parseMsg(msg[0], msg[1], msg[2]);
-							delay();
-						} else
-							log("Ignoring unrecognized MIDI command: %02x %02x %02x", msg[0], msg[1], msg[2]);
 
-						msgSize = 0;
-					}
-				}
-			} else {
-				if (c == 0xf7) {
-					// Terminator received
-					if (sysExSize == SYSEX_SIZE) {
-						parseSysEx(sysEx[1], sysEx[2], sysEx[3]);
-						delay();
-					} else
-						log("Invalid SysEx of size %i received", sysExSize);
+			// Note: no running status handling
+			if (c & 0x80) {
+				if (msgSize > 0)
+					log("Dropping MIDI message with status %02x", msg[0]);
+				msgSize = 0;
+			}
 
-					readingSysEx = 0;
-					sysExSize = 0;
-				} else if (sysExSize == SYSEX_SIZE) {
-					log("SysEx overflow, ignoring data %02x %02x %02x %02x %02x", sysEx[0], sysEx[1], sysEx[2], sysEx[3], c);
-					readingSysEx = 0;
-					sysExSize = 0;
-				} else {
-					sysEx[sysExSize++] = c;
-				}
+			if (msgSize == 3) {
+				log("Dropping MIDI data byte %02x", c);
+				continue;
+			}
+
+			msg[msgSize++] = c;
+
+			if ((msg[0] & 0xf8) == 0x90 && msgSize == 3) {
+				parseMsg(msg[0], msg[1] & 0x7f, msg[2] & 0x7f);
+				delay();
+				msgSize = 0;
+			} else if (msg[0] == 0xc0 && msgSize == 2) {
+				setAudioVolume(msg[1] & 0x7f);
+				msgSize = 0;
 			}
 		}
 	}
