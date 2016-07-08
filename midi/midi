@@ -12,11 +12,13 @@
 
 set -e
 
-CONFIGFS_HOME=/sys/kernel/config
+CONFIGFS_HOME="/config"
 
 mount_configfs() {
 	[ -e "${CONFIGFS_HOME}/usb_gadget" ] && return 0
 
+	modprobe libcomposite
+	mkdir -p "${CONFIGFS_HOME}"
 	mount none "${CONFIGFS_HOME}" -t configfs
 
 	if [ ! -e "${CONFIGFS_HOME}/usb_gadget" ]; then
