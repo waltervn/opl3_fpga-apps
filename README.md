@@ -83,7 +83,7 @@ This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to
 
 7. Now start the OPL3 daemon:
 
-        /etc/init.d opl3d start
+        /etc/init.d/opl3d start
 
 ## Use with ScummVM
 
