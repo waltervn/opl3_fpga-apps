@@ -79,7 +79,7 @@ This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to
 
 6. Use a Micro-USB cable to connect J9 (on the *bottom* side of the ZYBO!) to your PC.
 
-  You should see a configfs-gadget message pop up on the ZYBO. If it does not, try removing and reinserting the USB cable.
+  You should see a configfs-gadget message pop up on the ZYBO. If it does not, try removing and reinserting the USB cable. If that doesn't help, turn off the ZYBO and try again. Sometimes it just refuses to work and I have no idea why that is. If anyone has any idea, please let me know.
 
 7. Now start the OPL3 daemon:
 
