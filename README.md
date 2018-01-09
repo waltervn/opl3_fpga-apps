@@ -2,26 +2,30 @@
 
 This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to be controlled from a PC using USB-MIDI. The main purpose is to allow the use of OPL3-FPGA with modified versions of [ScummVM](http://www.scummvm.org) and [DOSBox](http://www.dosbox.com) through a USB connection.
 
+## News
+* 2018-1-8 this project has been updated for Vivado/PetaLinux 2017.4.
+* Pre-built SD card image files are in the "images" folder. Feel free to copy these to a MicroSD card and skip to the "Running" section of the README.
+
 ## Building
 
-1. Install Vivado 2016.1 and PetaLinux 2016.1.
+1. Install Vivado 2017.4 and PetaLinux 2017.4.
 
 2. Set up the environment:
 
         source /path/to/vivado/settings64.sh
         source /path/to/petalinux/settings.sh
 
-3. Download Greg Taylor's [OPL3_FPGA BSP](https://github.com/gtaylormb/fpga_utility/blob/master/petalinux_bsp/ZYBO_OPL3_FPGA_2016_1.bsp)
+3. Download Greg Taylor's [OPL3_FPGA BSP](https://github.com/gtaylormb/fpga_utility/blob/master/petalinux_bsp/ZYBO_OPL3_FPGA_2017_4.bsp)
 
 4. Create a new PetaLinux project:
 
-        petalinux-create -t project -s ZYBO_OPL3_FPGA_2016_1.bsp
+        petalinux-create -t project -s ZYBO_OPL3_FPGA_2017_4.bsp
 
-5. Change to the new project directory and clone this repository:
+5. Clone the Vivado/PetaLinux-2017.4 branch of this git repository and copy the "midi" and "opl3d" folders into:
 
-        git clone https://github.com/waltervn/opl3_fpga-apps.git components/apps
+        <project-folder>/project-spec/meta-user/recipes-apps
 
-6. Edit subsystems/linux/configs/device-tree/system-top.dts and add the following:
+6. Edit <project-folder>/project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi and add the following:
 
         /{
             usb_phy0: usb_phy@0 {
@@ -40,7 +44,6 @@ This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to
         petalinux-config -c kernel
 
   Enable the following options:
-  - Device Drivers > USB support > NOP USB Transceiver Driver (*)
   - Device Drivers > USB support > USB Gadget Support -> MIDI function (*)
 
   Then exit and save the configuration
@@ -71,19 +74,9 @@ This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to
 
 3. Remove JP1 to enable OTG mode
 
-4. Power on the ZYBO and log into PetaLinux with root/root
+4. Use a Micro-USB cable to connect J9 (on the *bottom* side of the ZYBO!) to your PC.
 
-5. Configure the MIDI gadget:
-
-        /etc/init.d/midi start
-
-6. Use a Micro-USB cable to connect J9 (on the *bottom* side of the ZYBO!) to your PC.
-
-  You should see a configfs-gadget message pop up on the ZYBO. If it does not, try removing and reinserting the USB cable. If that doesn't help, turn off the ZYBO and try again. Sometimes it just refuses to work and I have no idea why that is. If anyone has any idea, please let me know.
-
-7. Now start the OPL3 daemon:
-
-        /etc/init.d/opl3d start
+5. Power on the ZYBO
 
 ## Use with ScummVM
 
@@ -99,7 +92,9 @@ This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to
 
   - Under [sblaster] set oplmode to 'opl3fpga'.
 
-  - Under [midi] set mididevice and midiconfig to point to the OPL3-FPGA midi device.
+  - Under [midi] set midiconfig to point to the OPL3-FPGA midi device.
+  
+  - Also under [midi] set oplrate=49716. (Walter, this is the rate the OPL3-FPGA is running at, but does this do anything?)
 
     For Linux, try the following:
     Run 'aconnect -l' and look for "MIDI function". Use the client number you see there to set 'midiconfig'. E.g. if your client number is 28, set midiconfig to "28:0".
