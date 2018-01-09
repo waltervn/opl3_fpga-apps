@@ -3,7 +3,8 @@
 This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to be controlled from a PC using USB-MIDI. The main purpose is to allow the use of OPL3-FPGA with modified versions of [ScummVM](http://www.scummvm.org) and [DOSBox](http://www.dosbox.com) through a USB connection.
 
 ## News
-* 2018-1-8 this project has been updated for Vivado/PetaLinux 2017.4.
+2018-1-8 
+* This project has been updated for Vivado/PetaLinux 2017.4.
 * Pre-built SD card image files are in the "images" folder. Feel free to copy these to a MicroSD card and skip to the "Running" section of the README.
 
 ## Building
