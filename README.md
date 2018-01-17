@@ -21,10 +21,16 @@ This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to
 4. Create a new PetaLinux project:
 
         petalinux-create -t project -s ZYBO_OPL3_FPGA_2017_4.bsp
+        
+5. Create two new Petalinux apps. From the <project_folder>:
+        petalinux-create -t apps --template c --name opl3d --enable
+        petalinux-create -t apps --template install --name midi --enable
 
-5. Clone the Vivado/PetaLinux-2017.4 branch of this git repository and copy the "midi" and "opl3d" folders into:
+5. Clone the Vivado/PetaLinux-2017.4 branch of this git repository and replace the "midi" and "opl3d" folders in:
 
         <project-folder>/project-spec/meta-user/recipes-apps
+        
+with the "midi" and "opl3d" folders from the repository.
 
 6. Edit <project-folder>/project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi and add the following:
 
@@ -94,8 +100,6 @@ This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to
   - Under [sblaster] set oplmode to 'opl3fpga'.
 
   - Under [midi] set midiconfig to point to the OPL3-FPGA midi device.
-  
-  - Also under [midi] set oplrate=49716. (Walter, this is the rate the OPL3-FPGA is running at, but does this do anything?)
 
     For Linux, try the following:
     Run 'aconnect -l' and look for "MIDI function". Use the client number you see there to set 'midiconfig'. E.g. if your client number is 28, set midiconfig to "28:0".
