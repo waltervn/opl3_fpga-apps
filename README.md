@@ -23,6 +23,7 @@ This allows Greg Taylor's [OPL3-FPGA](https://github.com/gtaylormb/opl3_fpga) to
         petalinux-create -t project -s ZYBO_OPL3_FPGA_2017_4.bsp
         
 5. Create two new Petalinux apps. From the <project_folder>:
+
         petalinux-create -t apps --template c --name opl3d --enable
         petalinux-create -t apps --template install --name midi --enable
 
